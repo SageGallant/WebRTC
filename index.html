@@ -7,7 +7,8 @@
     <title>EchoRoom - Temporary Chat Rooms</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
     <link rel="stylesheet" href="css/style.css">
-    <link rel="icon" href="assets/favicon.ico">
+    <link rel="icon" href="assets/favicon.ico" type="image/x-icon">
+    <script src="js/config.js"></script>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script src="https://unpkg.com/uuid@latest/dist/umd/uuidv4.min.js"></script>
     <script src="js/main.js" defer></script>
@@ -37,6 +38,40 @@
                 </svg>
             </button>
         </header>
+
+        <!-- Backend Connection Error (initially hidden) -->
+        <div id="backendError" class="hidden bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-8" role="alert">
+            <div class="flex items-start">
+                <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 text-red-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"
+                        fill="currentColor">
+                        <path fill-rule="evenodd"
+                            d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                            clip-rule="evenodd" />
+                    </svg>
+                </div>
+                <div class="ml-3">
+                    <h3 class="text-lg font-medium">Backend Server Connection Error</h3>
+                    <div class="mt-2">
+                        <p class="text-sm">Could not connect to the backend server. This could be due to one of the
+                            following reasons:</p>
+                        <ul class="list-disc list-inside mt-2 text-sm">
+                            <li>The backend server is not running</li>
+                            <li>You're accessing the site via GitHub Pages without a proper backend URL configured</li>
+                            <li>There's a network connectivity issue</li>
+                        </ul>
+                        <div class="mt-3">
+                            <p class="text-sm font-semibold">If you're a developer:</p>
+                            <p class="text-sm">Update the PRODUCTION_URL in js/config.js to point to your deployed
+                                backend server.</p>
+                            <button id="refreshPageBtn"
+                                class="mt-3 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-500">Refresh
+                                Page</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Landing Page (will be hidden when joined a room) -->
         <div id="landingPage" class="flex flex-col items-center justify-center">
@@ -176,6 +211,40 @@
         <!-- Toast Notifications -->
         <div id="toastContainer" class="fixed bottom-4 right-4 space-y-2"></div>
     </div>
+
+    <script>
+        // Add script to handle backend connection errors
+        document.addEventListener('DOMContentLoaded', function () {
+            // Check for backend connection
+            const checkBackendConnection = () => {
+                const socket = io(CONFIG.getServerURL(), {
+                    transports: ['websocket', 'polling'],
+                    reconnectionAttempts: 3,
+                    timeout: 5000
+                });
+
+                socket.on('connect', () => {
+                    console.log('Successfully connected to backend server!');
+                    document.getElementById('backendError').classList.add('hidden');
+                    socket.disconnect(); // We only needed to test the connection
+                });
+
+                socket.on('connect_error', (err) => {
+                    console.error('Failed to connect to backend server:', err);
+                    document.getElementById('backendError').classList.remove('hidden');
+                    document.getElementById('landingPage').classList.add('hidden');
+                });
+
+                // Handle refresh button
+                document.getElementById('refreshPageBtn').addEventListener('click', () => {
+                    window.location.reload();
+                });
+            };
+
+            // Run the check
+            setTimeout(checkBackendConnection, 1000);
+        });
+    </script>
 </body>
 
 </html>
