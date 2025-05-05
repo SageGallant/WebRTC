@@ -1,7 +1,0 @@
-#!/bin/bash
-echo "Starting EchoRoom Chat Application..."
-echo "Installing dependencies..."
-npm install
-echo ""
-echo "Starting the server..."
-npm start 
