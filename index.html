@@ -35,14 +35,20 @@
                 <div class="avatar-selection">
                     <p>Select a profile picture:</p>
                     <div class="avatar-options">
-                        <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
-                            alt="Avatar 1" class="avatar" data-avatar="avatar1.png">
-                        <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
-                            alt="Avatar 2" class="avatar" data-avatar="avatar2.png">
-                        <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
-                            alt="Avatar 3" class="avatar" data-avatar="avatar3.png">
-                        <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
-                            alt="Avatar 4" class="avatar" data-avatar="avatar4.png">
+                        <img src="" alt="Avatar 1" class="avatar" data-seed="avatar1">
+                        <img src="" alt="Avatar 2" class="avatar" data-seed="avatar2">
+                        <img src="" alt="Avatar 3" class="avatar" data-seed="avatar3">
+                        <img src="" alt="Avatar 4" class="avatar" data-seed="avatar4">
+                    </div>
+                    <div class="avatar-actions">
+                        <button id="refresh-avatars" class="action-btn">
+                            <i class="fas fa-sync-alt"></i> Refresh Options
+                        </button>
+                        <div class="custom-avatar">
+                            <label for="custom-avatar-url">Or enter avatar URL:</label>
+                            <input type="text" id="custom-avatar-url" placeholder="https://example.com/avatar.png">
+                            <button id="use-custom-avatar" class="secondary-btn">Use Custom</button>
+                        </div>
                     </div>
                 </div>
                 <div class="action-buttons">

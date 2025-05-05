@@ -12,6 +12,7 @@ const state = {
   screenShareStream: null,
   isDarkMode: false,
   selectedAvatar: null,
+  connectionStatus: "disconnected", // Track connection status
 };
 
 // DOM Elements
@@ -36,13 +37,20 @@ const elements = {
   screenShareVideo: document.getElementById("screen-share-video"),
   screenShareUser: document.getElementById("screen-share-user"),
   copyRoomIdBtn: document.getElementById("copy-room-id"),
+  refreshAvatarsBtn: document.getElementById("refresh-avatars"),
+  customAvatarUrlInput: document.getElementById("custom-avatar-url"),
+  useCustomAvatarBtn: document.getElementById("use-custom-avatar"),
 };
+
+// Add this after the state definition
+let heartbeatInterval = null;
 
 // Initialize the application
 function init() {
   setupEventListeners();
   setupThemeToggle();
   setupAvatarSelection();
+  setupHeartbeat();
 }
 
 // Setup Event Listeners
@@ -57,6 +65,10 @@ function setupEventListeners() {
   elements.shareScreenBtn.addEventListener("click", startScreenShare);
   elements.stopScreenShareBtn.addEventListener("click", stopScreenShare);
   elements.copyRoomIdBtn.addEventListener("click", copyRoomIdToClipboard);
+
+  // Avatar selection buttons
+  elements.refreshAvatarsBtn.addEventListener("click", refreshAvatars);
+  elements.useCustomAvatarBtn.addEventListener("click", useCustomAvatar);
 }
 
 // Setup Theme Toggle
@@ -81,11 +93,54 @@ function setupThemeToggle() {
 function setupAvatarSelection() {
   elements.avatars.forEach((avatar) => {
     avatar.addEventListener("click", () => {
+      // Clear custom avatar URL when selecting a generated avatar
+      elements.customAvatarUrlInput.value = "";
+      elements.customAvatarUrlInput.style.borderColor = "";
+
+      // Apply the selected class
       elements.avatars.forEach((a) => a.classList.remove("selected"));
       avatar.classList.add("selected");
+
+      // Store the avatar URL
       state.selectedAvatar = avatar.getAttribute("data-avatar");
     });
   });
+}
+
+// Setup heartbeat mechanism to monitor connection health
+function setupHeartbeat() {
+  // Clear any existing heartbeat
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+  }
+
+  // Set up a new heartbeat interval
+  heartbeatInterval = setInterval(() => {
+    // Only run if we're connected to a room
+    if (
+      state.peer &&
+      state.peer.open &&
+      state.roomId &&
+      Object.keys(state.connections).length > 0
+    ) {
+      // Send a heartbeat to all connections
+      broadcastToPeers({
+        type: "heartbeat",
+        timestamp: Date.now(),
+      });
+
+      // Check if any connections haven't responded recently
+      Object.entries(state.connections).forEach(([peerId, conn]) => {
+        // If connection is not open, try to reconnect
+        if (!conn.open) {
+          console.warn(
+            `Connection to ${peerId} is closed. Removing from connections.`
+          );
+          delete state.connections[peerId];
+        }
+      });
+    }
+  }, 15000); // Check every 15 seconds
 }
 
 // Validate user input
@@ -97,9 +152,19 @@ function validateUserInput() {
     return false;
   }
 
-  if (!state.selectedAvatar) {
-    showError("Please select a profile picture");
+  // Check if either a predefined avatar is selected or a custom URL is provided
+  if (!state.selectedAvatar && !elements.customAvatarUrlInput.value.trim()) {
+    showError("Please select a profile picture or enter a custom avatar URL");
     return false;
+  }
+
+  // If custom URL is provided but no avatar is selected, use the custom URL
+  if (!state.selectedAvatar && elements.customAvatarUrlInput.value.trim()) {
+    useCustomAvatar();
+    if (!state.selectedAvatar) {
+      // useCustomAvatar failed validation
+      return false;
+    }
   }
 
   state.username = username;
@@ -123,14 +188,14 @@ function generateUserId() {
 function createRoom() {
   if (!validateUserInput()) return;
 
-  // Initialize PeerJS
-  initializePeer();
+  // Generate room ID
+  state.roomId = "room_" + uuid.v4().substring(0, 8);
 
   // Set as room creator
   state.isRoomCreator = true;
 
-  // Generate room ID
-  state.roomId = "room_" + uuid.v4().substring(0, 8);
+  // Initialize PeerJS with the room ID as the peer ID
+  initializePeer(state.roomId);
 
   // Update UI
   displayRoom();
@@ -149,20 +214,24 @@ function joinRoom() {
 
   state.roomId = roomId;
 
-  // Initialize PeerJS
+  // Show connecting status
+  displayConnectionStatus("connecting");
+
+  // Initialize PeerJS with a random ID for joiners
   initializePeer();
 }
 
 // Initialize PeerJS
-function initializePeer() {
-  // Create a new peer with a random ID
-  state.peer = new Peer(undefined, {
+function initializePeer(peerId) {
+  // Create a new peer with either provided ID (for room creator) or random ID (for joiners)
+  state.peer = new Peer(peerId, {
     config: {
       iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:global.stun.twilio.com:3478" },
       ],
     },
+    debug: 3, // Set debug level to help with troubleshooting
   });
 
   // Handle peer open event
@@ -172,6 +241,7 @@ function initializePeer() {
 
     if (state.isRoomCreator) {
       // If creating a room, just display the room
+      displayConnectionStatus("connected", "Room created successfully");
       addSelfToParticipants();
     } else {
       // If joining, connect to the room creator
@@ -181,28 +251,99 @@ function initializePeer() {
 
   // Handle incoming connections
   state.peer.on("connection", (conn) => {
+    console.log("Incoming connection from:", conn.peer);
     handlePeerConnection(conn);
   });
 
   // Handle errors
   state.peer.on("error", (err) => {
     console.error("Peer error:", err);
-    showError("Connection error: " + err.message);
+
+    if (err.type === "peer-unavailable") {
+      displayConnectionStatus("error", "Room not found or no longer available");
+      showError(
+        "Room not found or no longer available. Please check the room ID and try again."
+      );
+    } else {
+      displayConnectionStatus("error", err.message);
+      showError("Connection error: " + err.message);
+    }
+  });
+
+  // Handle disconnection
+  state.peer.on("disconnected", () => {
+    console.log("Peer disconnected");
+    displayConnectionStatus("disconnected");
+
+    // Try to reconnect
+    setTimeout(() => {
+      if (state.peer) {
+        displayConnectionStatus("connecting", "Attempting to reconnect...");
+        state.peer.reconnect();
+      }
+    }, 3000);
   });
 }
 
 // Connect to a peer
 function connectToPeer(peerId) {
-  const conn = state.peer.connect(peerId, {
-    metadata: {
-      userId: state.userId,
-      username: state.username,
-      avatar: state.avatar,
-      joinRequest: true,
-    },
-  });
+  console.log("Attempting to connect to peer:", peerId);
+  try {
+    const conn = state.peer.connect(peerId, {
+      metadata: {
+        userId: state.userId,
+        username: state.username,
+        avatar: state.avatar,
+        joinRequest: true,
+      },
+      reliable: true,
+    });
 
-  handlePeerConnection(conn);
+    if (conn) {
+      handlePeerConnection(conn);
+
+      // Set a timeout to detect if connection doesn't complete
+      setTimeout(() => {
+        // If we still haven't connected successfully
+        if (state.connectionStatus !== "connected" && conn.peer === peerId) {
+          displayConnectionStatus(
+            "error",
+            "Connection timeout - Room may no longer be available"
+          );
+
+          // Add option to retry or go back
+          const retryMessage = document.createElement("div");
+          retryMessage.className = "retry-message";
+          retryMessage.innerHTML = `
+            <button class="retry-btn">Retry Connection</button>
+            <button class="cancel-btn">Go Back</button>
+          `;
+          elements.messagesContainer.appendChild(retryMessage);
+
+          // Add event listeners to the buttons
+          retryMessage
+            .querySelector(".retry-btn")
+            .addEventListener("click", () => {
+              retryMessage.remove();
+              retryConnection();
+            });
+
+          retryMessage
+            .querySelector(".cancel-btn")
+            .addEventListener("click", () => {
+              retryMessage.remove();
+              resetRoom();
+            });
+        }
+      }, 10000); // 10 second timeout
+    } else {
+      console.error("Failed to create connection");
+      showError("Failed to connect to the room");
+    }
+  } catch (error) {
+    console.error("Error connecting to peer:", error);
+    showError("Connection error: " + error.message);
+  }
 }
 
 // Handle peer connection
@@ -223,6 +364,7 @@ function handlePeerConnection(conn) {
     // If this is the room creator, display the room
     if (conn.peer === state.roomId && !state.isRoomCreator) {
       displayRoom();
+      displayConnectionStatus("connected", "Joined room successfully");
       addSelfToParticipants();
     }
   });
@@ -308,6 +450,19 @@ function handleIncomingData(conn, data) {
       break;
     case "screen_share_stop":
       handleScreenShareStop();
+      break;
+    case "heartbeat":
+      // Just acknowledge heartbeats silently
+      conn.send({
+        type: "heartbeat_ack",
+        timestamp: data.timestamp,
+        received: Date.now(),
+      });
+      break;
+    case "heartbeat_ack":
+      // We could calculate latency here if needed
+      // const latency = Date.now() - data.timestamp;
+      // console.log(`Heartbeat latency to ${conn.peer}: ${latency}ms`);
       break;
     default:
       console.log("Unknown data type:", data.type);
@@ -465,7 +620,7 @@ function updateParticipantsList() {
 
     const avatar = document.createElement("img");
     avatar.className = "participant-avatar";
-    avatar.src = `img/${participant.avatar}`;
+    avatar.src = participant.avatar;
     avatar.alt = participant.username;
 
     const nameSpan = document.createElement("span");
@@ -524,7 +679,7 @@ function displayMessage(message, isOutgoing = false) {
 
   const avatar = document.createElement("img");
   avatar.className = "message-avatar";
-  avatar.src = `img/${message.avatar}`;
+  avatar.src = message.avatar;
   avatar.alt = message.username;
 
   const contentDiv = document.createElement("div");
@@ -582,42 +737,58 @@ function scrollToBottom() {
 
 // Leave the room
 function leaveRoom() {
+  displayConnectionStatus("disconnected", "Leaving room...");
+
   // Notify peers that we're leaving
   broadcastToPeers({
     type: "participant_left",
     userId: state.userId,
   });
 
-  // Close all connections
-  Object.values(state.connections).forEach((conn) => {
-    conn.close();
-  });
+  // Give a small delay to allow the message to be sent
+  setTimeout(() => {
+    // Close all connections
+    Object.values(state.connections).forEach((conn) => {
+      try {
+        if (conn && conn.open) {
+          conn.close();
+        }
+      } catch (e) {
+        console.error("Error closing connection:", e);
+      }
+    });
 
-  // Stop screen sharing if active
-  if (state.screenShareStream) {
-    stopScreenShare();
-  }
+    // Stop screen sharing if active
+    if (state.screenShareStream) {
+      stopScreenShare();
+    }
 
-  // Close PeerJS connection
-  if (state.peer) {
-    state.peer.destroy();
-  }
+    // Close PeerJS connection
+    if (state.peer) {
+      try {
+        state.peer.destroy();
+      } catch (e) {
+        console.error("Error destroying peer:", e);
+      }
+    }
 
-  // Reset state
-  state.peer = null;
-  state.peerId = null;
-  state.roomId = null;
-  state.connections = {};
-  state.participants = {};
-  state.isRoomCreator = false;
+    // Reset state
+    state.peer = null;
+    state.peerId = null;
+    state.roomId = null;
+    state.connections = {};
+    state.participants = {};
+    state.isRoomCreator = false;
+    state.connectionStatus = "disconnected";
 
-  // Return to home screen
-  elements.chatRoom.classList.add("hidden");
-  elements.homeScreen.classList.remove("hidden");
+    // Return to home screen
+    elements.chatRoom.classList.add("hidden");
+    elements.homeScreen.classList.remove("hidden");
 
-  // Clear the messages container
-  elements.messagesContainer.innerHTML = "";
-  elements.participantsList.innerHTML = "";
+    // Clear the messages container and participants list
+    elements.messagesContainer.innerHTML = "";
+    elements.participantsList.innerHTML = "";
+  }, 500); // Give 500ms for messages to send
 }
 
 // Broadcast a message to all connected peers
@@ -730,6 +901,137 @@ function copyRoomIdToClipboard() {
 
       alert("Room ID copied to clipboard!");
     });
+}
+
+// Display connection status
+function displayConnectionStatus(status, details = "") {
+  state.connectionStatus = status;
+
+  let statusMessage = "";
+
+  switch (status) {
+    case "connecting":
+      statusMessage = `Connecting to room ${state.roomId}...`;
+      break;
+    case "connected":
+      statusMessage = `Connected to room ${state.roomId}`;
+      break;
+    case "disconnected":
+      statusMessage = "Disconnected from room";
+      break;
+    case "error":
+      statusMessage = `Connection error: ${details}`;
+      break;
+    default:
+      statusMessage = status;
+  }
+
+  displaySystemMessage(statusMessage);
+
+  // Also log to console for debugging
+  console.log(`Connection status: ${status}`, details ? `- ${details}` : "");
+}
+
+// Retry connecting to room
+function retryConnection() {
+  // Only allow retry if we're not already connected
+  if (state.connectionStatus !== "connected") {
+    displayConnectionStatus("connecting", "Retrying connection...");
+
+    // Clean up any existing peer connection
+    if (state.peer) {
+      state.peer.destroy();
+      state.peer = null;
+    }
+
+    // Reinitialize the peer connection
+    if (state.isRoomCreator) {
+      initializePeer(state.roomId);
+    } else {
+      initializePeer();
+      // Small delay to allow peer to initialize before connecting
+      setTimeout(() => {
+        if (state.peer && state.peer.open) {
+          connectToPeer(state.roomId);
+        }
+      }, 1000);
+    }
+  }
+}
+
+// Add a Reset Room function for when connections fail
+function resetRoom() {
+  // Close connections and reset state
+  if (state.peer) {
+    state.peer.destroy();
+  }
+
+  // Reset state
+  state.peer = null;
+  state.peerId = null;
+  state.connections = {};
+  state.participants = {};
+  state.isRoomCreator = false;
+  state.connectionStatus = "disconnected";
+
+  // Return to home screen
+  elements.chatRoom.classList.add("hidden");
+  elements.homeScreen.classList.remove("hidden");
+
+  // Clear the messages container
+  elements.messagesContainer.innerHTML = "";
+  elements.participantsList.innerHTML = "";
+}
+
+// Add function to refresh avatars with new options
+function refreshAvatars() {
+  // Call generateAvatarOptions with "refresh" parameter to generate new random seeds
+  window.generateAvatarOptions("refresh");
+
+  // Remove any selected avatar since we're refreshing
+  elements.avatars.forEach((a) => a.classList.remove("selected"));
+  state.selectedAvatar = null;
+
+  // Clear any custom avatar
+  elements.customAvatarUrlInput.value = "";
+  elements.customAvatarUrlInput.style.borderColor = "";
+
+  // Display a message about the refresh
+  displaySystemMessage("Avatar options refreshed");
+}
+
+// Add function to use custom avatar URL
+function useCustomAvatar() {
+  const customUrl = elements.customAvatarUrlInput.value.trim();
+
+  if (!customUrl) {
+    showError("Please enter a valid avatar URL");
+    return;
+  }
+
+  // Create a temporary image to test if the URL is valid
+  const testImg = new Image();
+  testImg.onload = function () {
+    // URL is valid, create a custom avatar element
+    elements.avatars.forEach((a) => a.classList.remove("selected"));
+
+    // Store the custom URL as the selected avatar
+    state.selectedAvatar = customUrl;
+
+    // Visually indicate custom avatar is selected
+    displaySystemMessage("Custom avatar selected");
+    elements.customAvatarUrlInput.style.borderColor = "var(--primary-color)";
+    setTimeout(() => {
+      elements.customAvatarUrlInput.style.borderColor = "";
+    }, 2000);
+  };
+
+  testImg.onerror = function () {
+    showError("Invalid image URL. Please provide a valid image URL.");
+  };
+
+  // Start loading the image to test
+  testImg.src = customUrl;
 }
 
 // Initialize the app when the DOM is loaded

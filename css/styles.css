@@ -148,6 +148,7 @@ input[type="text"]:focus {
   display: flex;
   justify-content: space-between;
   margin-top: 10px;
+  margin-bottom: 15px;
 }
 
 .avatar {
@@ -157,6 +158,8 @@ input[type="text"]:focus {
   cursor: pointer;
   border: 3px solid transparent;
   transition: var(--transition);
+  background-color: rgba(0, 0, 0, 0.05);
+  object-fit: cover; /* Ensure avatars maintain aspect ratio */
 }
 
 .avatar:hover {
@@ -166,6 +169,31 @@ input[type="text"]:focus {
 .avatar.selected {
   border-color: var(--primary-color);
   transform: scale(1.1);
+}
+
+.avatar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-top: 15px;
+}
+
+.custom-avatar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.custom-avatar input {
+  margin-bottom: 8px;
+}
+
+.custom-avatar button {
+  align-self: flex-start;
+}
+
+#refresh-avatars {
+  align-self: flex-start;
 }
 
 /* Button Styles */
@@ -458,18 +486,34 @@ input[type="text"]:focus {
 /* System Message Styles */
 .system-message {
   align-self: center;
-  background-color: rgba(0, 0, 0, 0.05);
+  background-color: rgba(0, 0, 0, 0.1);
   color: #666;
-  padding: 5px 15px;
+  padding: 8px 15px;
   border-radius: 15px;
   font-size: 0.9rem;
   font-style: italic;
-  margin: 5px 0;
+  margin: 8px 0;
+  max-width: 80%;
+  text-align: center;
+  animation: fadeIn 0.3s ease-in;
+  border-left: 3px solid var(--primary-color);
+  border-right: 3px solid var(--primary-color);
 }
 
 .dark-mode .system-message {
-  background-color: rgba(255, 255, 255, 0.1);
-  color: #aaa;
+  background-color: rgba(255, 255, 255, 0.15);
+  color: #ccc;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .message-input {
@@ -539,4 +583,51 @@ input[type="text"]:focus {
   .message {
     max-width: 90%;
   }
+}
+
+/* Retry Connection Styles */
+.retry-message {
+  align-self: center;
+  margin: 15px 0;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.retry-btn,
+.cancel-btn {
+  padding: 8px 15px;
+  border: none;
+  border-radius: 5px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.retry-btn {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.retry-btn:hover {
+  background-color: #3a5cd8;
+}
+
+.cancel-btn {
+  background-color: #f1f1f1;
+  color: #333;
+}
+
+.dark-mode .cancel-btn {
+  background-color: #3a3f48;
+  color: var(--dark-text);
+}
+
+.cancel-btn:hover {
+  background-color: #e1e1e1;
+}
+
+.dark-mode .cancel-btn:hover {
+  background-color: #4a4f58;
 }
