@@ -224,79 +224,145 @@ function joinRoom() {
 // Initialize PeerJS
 function initializePeer(peerId) {
   // Create a new peer with either provided ID (for room creator) or random ID (for joiners)
-  state.peer = new Peer(peerId, {
+  const peerOptions = {
     config: {
       iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:global.stun.twilio.com:3478" },
       ],
     },
-    debug: 3, // Set debug level to help with troubleshooting
-  });
+    debug: 2, // Set debug level (0=none, 1=errors, 2=warnings, 3=all)
+  };
 
-  // Handle peer open event
-  state.peer.on("open", (id) => {
-    state.peerId = id;
-    console.log("My peer ID is: " + id);
+  console.log(
+    "Initializing peer connection",
+    peerId ? `with ID: ${peerId}` : "with random ID"
+  );
 
-    if (state.isRoomCreator) {
-      // If creating a room, just display the room
-      displayConnectionStatus("connected", "Room created successfully");
-      addSelfToParticipants();
-    } else {
-      // If joining, connect to the room creator
-      connectToPeer(state.roomId);
+  try {
+    // Destroy any existing peer connection
+    if (state.peer) {
+      state.peer.destroy();
     }
-  });
 
-  // Handle incoming connections
-  state.peer.on("connection", (conn) => {
-    console.log("Incoming connection from:", conn.peer);
-    handlePeerConnection(conn);
-  });
+    // Create new peer instance
+    state.peer = new Peer(peerId, peerOptions);
 
-  // Handle errors
-  state.peer.on("error", (err) => {
-    console.error("Peer error:", err);
+    // Handle peer open event
+    state.peer.on("open", (id) => {
+      state.peerId = id;
+      console.log("PeerJS connection established with ID:", id);
 
-    if (err.type === "peer-unavailable") {
-      displayConnectionStatus("error", "Room not found or no longer available");
-      showError(
-        "Room not found or no longer available. Please check the room ID and try again."
-      );
-    } else {
-      displayConnectionStatus("error", err.message);
-      showError("Connection error: " + err.message);
-    }
-  });
-
-  // Handle disconnection
-  state.peer.on("disconnected", () => {
-    console.log("Peer disconnected");
-    displayConnectionStatus("disconnected");
-
-    // Try to reconnect
-    setTimeout(() => {
-      if (state.peer) {
-        displayConnectionStatus("connecting", "Attempting to reconnect...");
-        state.peer.reconnect();
+      if (state.isRoomCreator) {
+        // If creating a room, just display the room
+        displayConnectionStatus("connected", "Room created successfully");
+        addSelfToParticipants();
+      } else {
+        // If joining, connect to the room creator
+        connectToPeer(state.roomId);
       }
-    }, 3000);
-  });
+    });
+
+    // Handle incoming connections
+    state.peer.on("connection", (conn) => {
+      console.log("Incoming connection from:", conn.peer);
+      handlePeerConnection(conn);
+    });
+
+    // Handle errors
+    state.peer.on("error", (err) => {
+      console.error("Peer error:", err);
+
+      if (err.type === "peer-unavailable") {
+        displayConnectionStatus(
+          "error",
+          "Room not found or no longer available"
+        );
+        showError(
+          "Room not found or no longer available. Please check the room ID and try again."
+        );
+      } else if (err.type === "network" || err.type === "server-error") {
+        displayConnectionStatus(
+          "error",
+          "Network or server error, please try again"
+        );
+
+        // Add automatic retry for network errors
+        setTimeout(() => {
+          if (state.connectionStatus !== "connected") {
+            displaySystemMessage("Attempting automatic reconnection...");
+            retryConnection();
+          }
+        }, 5000);
+      } else if (err.type === "unavailable-id") {
+        // If we're the room creator and the ID is taken, this is a problem
+        if (state.isRoomCreator) {
+          displayConnectionStatus("error", "Room ID already in use");
+          showError(
+            "The room ID is already in use. Please try creating a new room."
+          );
+
+          // Reset to home screen
+          setTimeout(resetRoom, 2000);
+        } else {
+          // For joiners, just generate a new random ID
+          console.log("Peer ID unavailable, generating new random ID");
+          initializePeer(); // Retry with random ID
+        }
+      } else {
+        displayConnectionStatus("error", err.message);
+        showError("Connection error: " + err.message);
+      }
+    });
+
+    // Handle disconnection
+    state.peer.on("disconnected", () => {
+      console.log("Peer disconnected from server");
+      displayConnectionStatus("disconnected", "Disconnected from server");
+
+      // Try to reconnect
+      setTimeout(() => {
+        if (state.peer && state.connectionStatus !== "connected") {
+          displayConnectionStatus(
+            "connecting",
+            "Attempting to reconnect to server..."
+          );
+          try {
+            state.peer.reconnect();
+          } catch (e) {
+            console.error("Error during reconnect:", e);
+            // If reconnect fails, try to reinitialize
+            initializePeer(state.isRoomCreator ? state.roomId : null);
+          }
+        }
+      }, 3000);
+    });
+  } catch (e) {
+    console.error("Error initializing peer:", e);
+    displayConnectionStatus("error", "Failed to initialize connection");
+    showError("Failed to initialize connection: " + e.message);
+  }
 }
 
 // Connect to a peer
 function connectToPeer(peerId) {
   console.log("Attempting to connect to peer:", peerId);
+
   try {
+    // Display connecting status
+    displayConnectionStatus("connecting", `Connecting to room ${peerId}...`);
+
+    // Create connection with better metadata
     const conn = state.peer.connect(peerId, {
       metadata: {
         userId: state.userId,
         username: state.username,
         avatar: state.avatar,
         joinRequest: true,
+        timestamp: Date.now(),
       },
       reliable: true,
+      serialization: "json",
     });
 
     if (conn) {
@@ -305,7 +371,12 @@ function connectToPeer(peerId) {
       // Set a timeout to detect if connection doesn't complete
       setTimeout(() => {
         // If we still haven't connected successfully
-        if (state.connectionStatus !== "connected" && conn.peer === peerId) {
+        if (
+          state.connectionStatus !== "connected" &&
+          conn.peer === peerId &&
+          !conn.isConnectionOpen
+        ) {
+          console.warn("Connection timeout for peer:", peerId);
           displayConnectionStatus(
             "error",
             "Connection timeout - Room may no longer be available"
@@ -315,6 +386,12 @@ function connectToPeer(peerId) {
           const retryMessage = document.createElement("div");
           retryMessage.className = "retry-message";
           retryMessage.innerHTML = `
+            <p>Unable to connect to the room. This may be due to:</p>
+            <ul>
+              <li>The room no longer exists</li>
+              <li>Network issues</li>
+              <li>Firewall restrictions</li>
+            </ul>
             <button class="retry-btn">Retry Connection</button>
             <button class="cancel-btn">Go Back</button>
           `;
@@ -335,7 +412,7 @@ function connectToPeer(peerId) {
               resetRoom();
             });
         }
-      }, 10000); // 10 second timeout
+      }, 12000); // 12 second timeout
     } else {
       console.error("Failed to create connection");
       showError("Failed to connect to the room");
@@ -350,15 +427,20 @@ function connectToPeer(peerId) {
 function handlePeerConnection(conn) {
   // Store the connection
   state.connections[conn.peer] = conn;
+  console.log("Setting up connection with peer:", conn.peer);
 
   // Handle connection open
   conn.on("open", () => {
     console.log("Connected to peer: " + conn.peer);
 
+    // Mark connection as successfully opened
+    conn.isConnectionOpen = true;
+
     // If this is a join request, send room information
     if (conn.metadata?.joinRequest && state.isRoomCreator) {
+      console.log("Sending room info to new peer:", conn.peer);
       // Send the current participants list to the new peer
-      sendRoomInfo(conn);
+      setTimeout(() => sendRoomInfo(conn), 500); // Add slight delay for stability
     }
 
     // If this is the room creator, display the room
@@ -366,22 +448,51 @@ function handlePeerConnection(conn) {
       displayRoom();
       displayConnectionStatus("connected", "Joined room successfully");
       addSelfToParticipants();
+      console.log("Successfully joined room:", state.roomId);
     }
   });
 
   // Handle incoming data
   conn.on("data", (data) => {
+    console.log("Received data from peer:", conn.peer, data);
     handleIncomingData(conn, data);
   });
 
   // Handle connection close
   conn.on("close", () => {
+    console.log("Connection closed with peer:", conn.peer);
     handlePeerDisconnect(conn.peer);
   });
 
   // Handle errors
   conn.on("error", (err) => {
-    console.error("Connection error:", err);
+    console.error("Connection error with peer:", conn.peer, err);
+
+    // Try to reconnect if this was an important connection
+    if (conn.peer === state.roomId && !state.isRoomCreator) {
+      displayConnectionStatus("error", "Connection error: " + err.message);
+
+      // Add retry button
+      const retryMessage = document.createElement("div");
+      retryMessage.className = "retry-message";
+      retryMessage.innerHTML = `
+        <button class="retry-btn">Retry Connection</button>
+        <button class="cancel-btn">Go Back</button>
+      `;
+      elements.messagesContainer.appendChild(retryMessage);
+
+      retryMessage.querySelector(".retry-btn").addEventListener("click", () => {
+        retryMessage.remove();
+        retryConnection();
+      });
+
+      retryMessage
+        .querySelector(".cancel-btn")
+        .addEventListener("click", () => {
+          retryMessage.remove();
+          resetRoom();
+        });
+    }
   });
 }
 
@@ -940,22 +1051,57 @@ function retryConnection() {
 
     // Clean up any existing peer connection
     if (state.peer) {
-      state.peer.destroy();
+      // Close any existing connections first
+      Object.values(state.connections).forEach((conn) => {
+        if (conn && conn.open) {
+          try {
+            conn.close();
+          } catch (e) {
+            console.error("Error closing connection during retry:", e);
+          }
+        }
+      });
+
+      // Clear connections object
+      state.connections = {};
+
+      try {
+        state.peer.destroy();
+      } catch (e) {
+        console.error("Error destroying peer during retry:", e);
+      }
       state.peer = null;
     }
 
-    // Reinitialize the peer connection
-    if (state.isRoomCreator) {
-      initializePeer(state.roomId);
-    } else {
-      initializePeer();
-      // Small delay to allow peer to initialize before connecting
-      setTimeout(() => {
-        if (state.peer && state.peer.open) {
-          connectToPeer(state.roomId);
-        }
-      }, 1000);
-    }
+    // Reinitialize the peer connection with a new ID
+    displaySystemMessage("Attempting to reconnect...");
+
+    // Small delay before recreating the peer to ensure clean state
+    setTimeout(() => {
+      if (state.isRoomCreator) {
+        // If room creator, use the same room ID for consistent room access
+        initializePeer(state.roomId);
+      } else {
+        // If joining, generate a new random peer ID
+        initializePeer();
+
+        // Small delay to allow peer to initialize before connecting
+        setTimeout(() => {
+          if (state.peer && state.peer.open) {
+            connectToPeer(state.roomId);
+          } else {
+            // If peer isn't open after waiting, show error
+            displayConnectionStatus(
+              "error",
+              "Could not establish connection to PeerJS server"
+            );
+            displaySystemMessage(
+              "Please try again or check your internet connection"
+            );
+          }
+        }, 2000);
+      }
+    }, 1000);
   }
 }
 
