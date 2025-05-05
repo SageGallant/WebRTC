@@ -1,0 +1,25 @@
+{
+  "name": "temporary-chat-room",
+  "version": "1.0.0",
+  "description": "A temporary room-based chat application with WebRTC-based screen sharing",
+  "main": "index.html",
+  "scripts": {
+    "start": "node server.js",
+    "deploy": "node deploy.js",
+    "deploy:gh-pages": "gh-pages -d ."
+  },
+  "keywords": [
+    "webrtc",
+    "chat",
+    "screen-sharing",
+    "temporary-room"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "gh-pages": "^5.0.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.0.3"
+  }
+}
