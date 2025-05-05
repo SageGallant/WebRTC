@@ -4,247 +4,110 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EchoRoom - Temporary Chat Rooms</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="icon" href="assets/favicon.ico" type="image/x-icon">
-    <script src="js/config.js"></script>
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-    <script src="https://unpkg.com/uuid@latest/dist/umd/uuidv4.min.js"></script>
-    <script src="js/main.js" defer></script>
-    <script src="js/webrtc.js" defer></script>
+    <title>Temporary Chat Room</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- PeerJS library for WebRTC connections -->
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <!-- UUID library for generating room IDs -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/uuid/8.3.2/uuid.min.js"></script>
+    <!-- Avatar generation script -->
+    <script src="js/avatars.js"></script>
 </head>
 
-<body class="bg-gray-100 dark:bg-gray-900 min-h-screen transition-colors duration-200">
-    <div class="container mx-auto px-4 py-8">
-        <!-- Header -->
-        <header class="flex justify-between items-center mb-8">
-            <div class="flex items-center">
-                <h1 class="text-3xl font-bold text-indigo-600 dark:text-indigo-400">EchoRoom</h1>
-                <span
-                    class="ml-3 text-sm bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 px-2 py-1 rounded-md">Temporary
-                    Chat</span>
-            </div>
-            <button id="themeToggle" class="p-2 rounded-full bg-gray-200 dark:bg-gray-700 focus:outline-none">
-                <svg id="darkIcon" class="h-6 w-6 text-gray-800 dark:hidden" xmlns="http://www.w3.org/2000/svg"
-                    fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                </svg>
-                <svg id="lightIcon" class="h-6 w-6 text-yellow-300 hidden dark:block" xmlns="http://www.w3.org/2000/svg"
-                    fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
+<body class="light-mode">
+    <div class="container">
+        <header>
+            <h1>Temporary Chat Room</h1>
+            <button id="theme-toggle" aria-label="Toggle dark mode">
+                <i class="fas fa-moon"></i>
             </button>
         </header>
 
-        <!-- Backend Connection Error (initially hidden) -->
-        <div id="backendError" class="hidden bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-8" role="alert">
-            <div class="flex items-start">
-                <div class="flex-shrink-0">
-                    <svg class="h-5 w-5 text-red-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"
-                        fill="currentColor">
-                        <path fill-rule="evenodd"
-                            d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                            clip-rule="evenodd" />
-                    </svg>
+        <!-- Home screen (create/join room) -->
+        <div id="home-screen">
+            <div class="card">
+                <h2>Create or Join a Room</h2>
+                <div class="form-group">
+                    <label for="username">Your Display Name</label>
+                    <input type="text" id="username" placeholder="Enter your name" required>
                 </div>
-                <div class="ml-3">
-                    <h3 class="text-lg font-medium">Backend Server Connection Error</h3>
-                    <div class="mt-2">
-                        <p class="text-sm">Could not connect to the backend server. This could be due to one of the
-                            following reasons:</p>
-                        <ul class="list-disc list-inside mt-2 text-sm">
-                            <li>The backend server is not running</li>
-                            <li>You're accessing the site via GitHub Pages without a proper backend URL configured</li>
-                            <li>There's a network connectivity issue</li>
-                        </ul>
-                        <div class="mt-3">
-                            <p class="text-sm font-semibold">If you're a developer:</p>
-                            <p class="text-sm">Update the PRODUCTION_URL in js/config.js to point to your deployed
-                                backend server.</p>
-                            <button id="refreshPageBtn"
-                                class="mt-3 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-500">Refresh
-                                Page</button>
+                <div class="avatar-selection">
+                    <p>Select a profile picture:</p>
+                    <div class="avatar-options">
+                        <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+                            alt="Avatar 1" class="avatar" data-avatar="avatar1.png">
+                        <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+                            alt="Avatar 2" class="avatar" data-avatar="avatar2.png">
+                        <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+                            alt="Avatar 3" class="avatar" data-avatar="avatar3.png">
+                        <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+                            alt="Avatar 4" class="avatar" data-avatar="avatar4.png">
+                    </div>
+                </div>
+                <div class="action-buttons">
+                    <button id="create-room-btn" class="primary-btn">Create New Room</button>
+                    <div class="or-divider">OR</div>
+                    <div class="form-group">
+                        <label for="room-id">Join with Room ID</label>
+                        <div class="join-input-group">
+                            <input type="text" id="room-id" placeholder="Enter room ID">
+                            <button id="join-room-btn" class="secondary-btn">Join Room</button>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Landing Page (will be hidden when joined a room) -->
-        <div id="landingPage" class="flex flex-col items-center justify-center">
-            <div class="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-md w-full max-w-md">
-                <h2 class="text-2xl font-bold mb-6 text-gray-800 dark:text-white">Join a Temporary Chat Room</h2>
-
-                <!-- Create Room Button -->
-                <button id="createRoomBtn"
-                    class="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg hover:bg-indigo-700 mb-4 transition duration-200">
-                    Create New Room
-                </button>
-
-                <div class="text-center my-4 text-gray-500 dark:text-gray-400">or</div>
-
-                <!-- Join Existing Room -->
-                <form id="joinRoomForm">
-                    <label for="roomIdInput"
-                        class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Enter Room ID</label>
-                    <input type="text" id="roomIdInput"
-                        class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md mb-4 bg-white dark:bg-gray-700 text-gray-800 dark:text-white"
-                        placeholder="Room ID">
-                    <button type="submit"
-                        class="w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 transition duration-200">
-                        Join Room
+        <!-- Chat room screen (hidden initially) -->
+        <div id="chat-room" class="hidden">
+            <div class="room-info">
+                <h2>Room: <span id="current-room-id"></span></h2>
+                <div class="room-actions">
+                    <button id="share-screen-btn" class="action-btn">
+                        <i class="fas fa-desktop"></i> Share Screen
                     </button>
-                </form>
-            </div>
-        </div>
-
-        <!-- User Info Form (appears after clicking create/join) -->
-        <div id="userInfoForm"
-            class="hidden bg-white dark:bg-gray-800 p-8 rounded-lg shadow-md w-full max-w-md mx-auto">
-            <h2 class="text-2xl font-bold mb-6 text-gray-800 dark:text-white">Tell us about yourself</h2>
-
-            <form id="profileForm">
-                <div class="mb-4">
-                    <label for="usernameInput"
-                        class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Your Name</label>
-                    <input type="text" id="usernameInput"
-                        class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-800 dark:text-white"
-                        placeholder="Enter your name" required>
-                </div>
-
-                <div class="mb-6">
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Choose Avatar</label>
-                    <div class="grid grid-cols-4 gap-2 mb-2" id="avatarOptions">
-                        <!-- Avatars will be dynamically added here -->
-                    </div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400">
-                        Avatars provided by DiceBear
-                    </div>
-                </div>
-
-                <button type="submit"
-                    class="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg hover:bg-indigo-700 transition duration-200">
-                    Continue to Chat
-                </button>
-            </form>
-        </div>
-
-        <!-- Chat Room UI (initially hidden) -->
-        <div id="chatRoom" class="hidden">
-            <!-- Room Info Bar -->
-            <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md mb-4 flex justify-between items-center">
-                <div>
-                    <h2 class="text-xl font-semibold text-gray-800 dark:text-white">Room: <span
-                            id="roomIdDisplay"></span></h2>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">
-                        <span id="userCountDisplay">0</span> participants
-                    </p>
-                </div>
-                <div class="flex space-x-2">
-                    <button id="shareRoomBtn"
-                        class="bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 px-3 py-1 rounded-md text-sm hover:bg-indigo-200 dark:hover:bg-indigo-800 transition duration-200">
-                        Share Room
+                    <button id="copy-room-id" class="action-btn">
+                        <i class="fas fa-copy"></i> Copy Room ID
                     </button>
-                    <button id="screenShareBtn"
-                        class="bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 px-3 py-1 rounded-md text-sm hover:bg-purple-200 dark:hover:bg-purple-800 transition duration-200">
-                        Share Screen
-                    </button>
-                    <button id="leaveRoomBtn"
-                        class="bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 px-3 py-1 rounded-md text-sm hover:bg-red-200 dark:hover:bg-red-800 transition duration-200">
-                        Leave Room
+                    <button id="leave-room-btn" class="action-btn danger">
+                        <i class="fas fa-sign-out-alt"></i> Leave Room
                     </button>
                 </div>
             </div>
 
-            <div class="flex flex-col md:flex-row gap-4 h-[75vh]">
-                <!-- Chat Area -->
-                <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 flex flex-col md:w-2/3 h-full">
-                    <!-- Messages Container -->
-                    <div id="messagesContainer" class="flex-1 overflow-y-auto mb-4 space-y-4">
-                        <div class="text-center text-gray-500 dark:text-gray-400 text-sm py-2">
-                            Messages will appear here
+            <div class="chat-container">
+                <div class="participants-section">
+                    <h3>Participants</h3>
+                    <ul id="participants-list"></ul>
+                </div>
+
+                <div class="main-chat-section">
+                    <div class="screen-share-container hidden" id="screen-share-container">
+                        <video id="screen-share-video" autoplay playsinline></video>
+                        <div class="screen-share-info">
+                            <span id="screen-share-user">Someone</span> is sharing their screen
+                            <button id="stop-screen-share" class="danger-btn hidden">Stop Sharing</button>
                         </div>
                     </div>
 
-                    <!-- Message Input -->
-                    <form id="messageForm" class="flex gap-2">
-                        <input type="text" id="messageInput"
-                            class="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-800 dark:text-white"
-                            placeholder="Type your message..." autocomplete="off">
-                        <button type="submit"
-                            class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition duration-200">
-                            Send
+                    <div class="messages-container" id="messages-container">
+                        <!-- Messages will be added here dynamically -->
+                    </div>
+
+                    <div class="message-input">
+                        <input type="text" id="message-input" placeholder="Type your message...">
+                        <button id="send-message-btn">
+                            <i class="fas fa-paper-plane"></i>
                         </button>
-                    </form>
-                </div>
-
-                <!-- Participants and Screen Share Area -->
-                <div class="md:w-1/3 flex flex-col gap-4 h-full">
-                    <!-- Screen Share Container -->
-                    <div id="screenShareContainer"
-                        class="bg-gray-900 rounded-lg shadow-md p-4 h-1/2 flex items-center justify-center">
-                        <div id="noScreenShare" class="text-center text-gray-400">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto mb-2" fill="none"
-                                viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                            </svg>
-                            <p>No screen being shared</p>
-                        </div>
-                        <video id="screenShareVideo" class="hidden w-full h-full object-contain"></video>
-                    </div>
-
-                    <!-- Participants List -->
-                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 flex-1 overflow-y-auto">
-                        <h3 class="font-medium text-gray-800 dark:text-white mb-3">Participants</h3>
-                        <ul id="participantsList" class="space-y-2">
-                            <!-- Participants will be added dynamically -->
-                        </ul>
                     </div>
                 </div>
             </div>
         </div>
-
-        <!-- Toast Notifications -->
-        <div id="toastContainer" class="fixed bottom-4 right-4 space-y-2"></div>
     </div>
 
-    <script>
-        // Add script to handle backend connection errors
-        document.addEventListener('DOMContentLoaded', function () {
-            // Check for backend connection
-            const checkBackendConnection = () => {
-                const socket = io(CONFIG.getServerURL(), {
-                    transports: ['websocket', 'polling'],
-                    reconnectionAttempts: 3,
-                    timeout: 5000
-                });
-
-                socket.on('connect', () => {
-                    console.log('Successfully connected to backend server!');
-                    document.getElementById('backendError').classList.add('hidden');
-                    socket.disconnect(); // We only needed to test the connection
-                });
-
-                socket.on('connect_error', (err) => {
-                    console.error('Failed to connect to backend server:', err);
-                    document.getElementById('backendError').classList.remove('hidden');
-                    document.getElementById('landingPage').classList.add('hidden');
-                });
-
-                // Handle refresh button
-                document.getElementById('refreshPageBtn').addEventListener('click', () => {
-                    window.location.reload();
-                });
-            };
-
-            // Run the check
-            setTimeout(checkBackendConnection, 1000);
-        });
-    </script>
+    <!-- Scripts -->
+    <script src="js/app.js"></script>
 </body>
 
 </html>
